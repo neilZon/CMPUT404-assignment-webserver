@@ -50,10 +50,8 @@ class MyWebServer(socketserver.BaseRequestHandler):
     def handle(self):
         try:
             self.data = self.request.recv(1024).strip()
-            # print ("Got a request of: %s\n" % self.data)
 
             headers = self.data.decode("utf-8").split("\r\n")
-            print(headers)
 
             request_line = headers[REQUEST_LINE] 
             request_line_components = request_line.split(" ")
