@@ -29,13 +29,21 @@ import os
 
 # constants
 METHOD = 0
+REQUEST_LINE = 0
 PATH = 1
+HOST_NAME = 1
+HOST = 3
 ROOT = "./www"
 
 HTTP_200_STATUS = "HTTP/1.1 200 OK\r\n"
+HTTP_301_STATUS = "HTTP/1.1 301 Moved Permanently\r\n"
 HTTP_404_STATUS = "HTTP/1.1 404 Not Found\r\n"
 HTTP_405_STATUS = "HTTP/1.1 405 Method Not Allowed\r\n"
 HTTP_500_STATUS = "HTTP/1.1 500 Internal Server Error\r\n"
+
+def get_host(s):
+    components = s.split("\r\n")
+    return components[0]
 
 class MyWebServer(socketserver.BaseRequestHandler):
     
@@ -44,9 +52,20 @@ class MyWebServer(socketserver.BaseRequestHandler):
             self.data = self.request.recv(1024).strip()
             # print ("Got a request of: %s\n" % self.data)
 
-            request_string_components = self.data.decode("utf-8").split(" ")
+            headers = self.data.decode("utf-8").split("\r\n")
+            print(headers)
 
-            if request_string_components[METHOD] != "GET":
+            request_line = headers[REQUEST_LINE] 
+            request_line_components = request_line.split(" ")
+
+            # get host name
+            host_name = ""
+            for header in headers:
+                if "Host: " in header:
+                    host_name = header.split(" ")[HOST_NAME]
+                    break
+
+            if request_line_components[METHOD] != "GET":
                 self.request.sendall(bytearray(f"{HTTP_405_STATUS}\r\n",'utf-8'))
                 return
 
@@ -55,26 +74,36 @@ class MyWebServer(socketserver.BaseRequestHandler):
             content_encoding = ""
             content_len = ""
 
-            path = ROOT + request_string_components[PATH]
+            path = request_line_components[PATH]
+            uri = ROOT + path
 
             # clean path of parent accesses
-            path = path.replace("../", "")
-            
-            if os.path.exists(path):
+            uri = uri.replace("../", "")
 
-                if os.path.isdir(path):
-                    files = set(os.listdir(path))
+            if os.path.exists(uri):
+
+                if os.path.isdir(uri):
+                    files = set(os.listdir(uri))
                     content_type = ""
                     data = ""
+                    appended_slash = False
+
+                    # add trailing /
+                    if not uri.endswith("/"):
+                        appended_slash = True
+                        status_code = HTTP_301_STATUS
+                        location = f"Location: http://{host_name + path + '/'}\r\n"
+                        self.request.sendall(bytearray(f"{status_code}Content-Type: text/html\r\n{location}",'utf-8'))
+                        return
 
                     if "index.html" in files:
-                        f = open(path + "index.html", "r")
+                        f = open(uri + "index.html", "r")
                         content_type = "text/html"
                         data = f.readlines()
                         f.close()
 
                     elif "index.htm" in files:
-                        f = open(path + "index.html", "r")
+                        f = open(uri + "index.htm", "r")
                         content_type = "text/html"
                         data = f.readlines()
                         f.close()
@@ -84,20 +113,22 @@ class MyWebServer(socketserver.BaseRequestHandler):
                         return
 
                     data = "".join(data)
-                    self.request.sendall(bytearray(f"{HTTP_200_STATUS}Content-Type: text/html\r\n\r\n{data}",'utf-8'))
+                    status_code = HTTP_200_STATUS
+                    location = ""
+                    self.request.sendall(bytearray(f"{status_code}Content-Type: text/html\r\n{location}\r\n{data}",'utf-8'))
                     return
 
-                elif os.path.isfile(path):
+                elif os.path.isfile(uri):
                     # serve file
-                    f = open(path, "r")
+                    f = open(uri, "r")
                     data = f.readlines()
                     f.close()
 
                     data = "".join(data)
 
-                    if path.endswith(".css"):
+                    if uri.endswith(".css"):
                         content_type = "text/css"
-                    elif path.endswith(".html"):
+                    elif uri.endswith(".html"):
                         content_type = "text/html"
 
                     self.request.sendall(bytearray(f"{HTTP_200_STATUS}Content-Type: {content_type}\r\n\r\n{data}",'utf-8'))
